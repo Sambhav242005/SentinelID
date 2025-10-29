@@ -49,17 +49,7 @@ Follow these steps to set up the project locally.
     OPENROUTER_API_KEY='your_openrouter_api_key'
     ```
 
-6.  **Initialize the database:**
-    You can initialize the database from a Python shell:
-    ```bash
-    flask shell
-    ```
-    Then, within the shell:
-    ```python
-    from app import db
-    db.create_all()
-    exit()
-    ```
+
 
 ## Usage
 
