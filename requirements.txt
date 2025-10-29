@@ -1,0 +1,6 @@
+Flask
+openai
+Flask-SQLAlchemy
+python-dotenv
+requests
+playwright
