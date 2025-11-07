@@ -1,6 +1,9 @@
 from flask_sqlalchemy import SQLAlchemy
 from config import config
 
+from pydantic import BaseModel, Field
+from enum import Enum
+
 db = SQLAlchemy()
 
 
@@ -41,3 +44,26 @@ class SessionTab(db.Model):
     url = db.Column(db.String(200))
     cookies = db.Column(db.Text)
     local_storage = db.Column(db.Text)
+
+
+# --- Data Models ---
+class UserChoice(str, Enum):
+    """Enumeration for the possible user choices."""
+
+    ALLOW = "ALLOW"
+    BLOCK = "BLOCK"
+    SPOOF = "SPOOF"
+
+
+class ChoiceLog(BaseModel):
+    """
+    Pydantic model to validate incoming log data.
+    """
+
+    user_id: str = Field(..., description="The unique identifier for the user.")
+    session_id: str = Field(..., description="The session this action occurred in.")
+    choice: UserChoice = Field(..., description="The user's decision.")
+
+    features: Dict[str, Any] = Field(
+        ..., description="Feature vector of the detected behavior."
+    )

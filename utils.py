@@ -2,10 +2,17 @@ import secrets  # Add this import
 import string
 from openai import OpenAI
 import re
-from config import config  # Make sure config has MODEL_NAME defined
+from models import ChoiceLog
+from config import Config, config  # Make sure config has MODEL_NAME defined
 import json
 from playwright.sync_api import sync_playwright
 from urllib.parse import quote
+import hashlib
+from typing import Tuple, Dict, Any
+import sys
+import requests
+import csv
+import os
 
 # Initialize OpenAI client with OpenRouter
 client = OpenAI(
@@ -41,9 +48,6 @@ def classify_behavior(prompt):
     except Exception as e:
         print(f"AI Classification Error: {str(e)}")
         return "UNKNOWN"
-
-
-# import json
 
 
 def sort_emails(email_content):
@@ -186,3 +190,92 @@ def check_email_breach(email):
     except Exception as e:
         print(f"Error checking breach: {e}")
         return None
+
+
+def check_hibp_api(password: str, timeout: float = 10.0) -> Tuple[bool, int]:
+    """
+    Checks a password against the HIBP Pwned Passwords API (v2)
+    using k-anonymity.
+
+    This method is secure as the full password is never sent.
+
+    Returns (is_pwned, count)
+    - is_pwned: True if the password hash suffix was found in the API response
+    - count: times seen (0 if not found)
+    """
+    if not password:
+        raise ValueError("password required")
+
+    # 1. Calculate the SHA-1 hash of the password
+    sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+
+    # 2. Split the hash for k-anonymity
+    # The API only needs the first 5 characters (prefix).
+    prefix = sha1[:5]
+    suffix = sha1[5:]
+
+    # 3. Query the API range endpoint
+    url = f"https://api.pwnedpasswords.com/range/{prefix}"
+
+    try:
+        resp = requests.get(url, headers={"User-Agent": DEFAULT_UA}, timeout=timeout)
+    except requests.RequestException as e:
+        # If the network fails, we can't confirm, so we treat it as "not pwned"
+        # but print an error.
+        print(f"Network error checking HIBP: {e}", file=sys.stderr)
+        return False, 0
+
+    # 4. Process the response
+    # 404 means the 5-char prefix was not found in any breached passwords.
+    # This is the "best" possible outcome, as it means it's not even
+    # in the database with other similar hashes.
+    if resp.status_code == 404:
+        return False, 0
+
+    if resp.status_code != 200:
+        # Any other error means we can't be sure.
+        print(f"Error from HIBP API: status {resp.status_code}", file=sys.stderr)
+        return False, 0
+
+    # 5. Check the list of suffixes returned by the API.
+    # The response is plain text, e.g.:
+    # 0018A45C4D1DEF81644B54AB7F969B88D65:3
+    # 00D4F6E8FA6EECAD2A384D41A49598894DA:1
+
+    # We iterate through the lines to find our *suffix*.
+    for line in resp.text.splitlines():
+        try:
+            line_suffix, count_str = line.split(":")
+            if line_suffix == suffix:
+                # We found a match!
+                return True, int(count_str)
+        except ValueError:
+            # Ignore any malformed lines
+            continue
+
+    # If we finish the loop without finding our suffix, the password is safe.
+    return False, 0
+
+
+# --- Utility Function ---
+def write_to_csv(log_entry: ChoiceLog):
+    """
+    Appends a new log entry to the CSV file.
+    Creates the file and writes headers if it doesn't exist.
+    """
+    file_exists = os.path.isfile(config.LOG_FILE)
+
+    with open(config.LOG_FILE, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=Config.CSV_FIELDS)
+
+        if not file_exists:
+            writer.writeheader()  # Write headers if new file
+
+        # Convert the log_entry to a dictionary compatible with CSV_FIELDS
+        row_data = {
+            "user_id": log_entry.user_id,
+            "session_id": log_entry.session_id,
+            "choice": log_entry.choice.value,
+            "features": str(log_entry.features),  # Store dict as a string
+        }
+        writer.writerow(row_data)

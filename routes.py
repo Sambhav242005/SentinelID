@@ -1,15 +1,20 @@
 import secrets
 from flask import Blueprint, jsonify, request
-from models import db, User, Alias, Leak, Session, SessionTab
+from sqlalchemy.util.langhelpers import methods_equivalent
+from models import db, User, Alias, Leak, Session, SessionTab, ChoiceLog
 from utils import (
     generate_random_password,
     classify_behavior,
     sort_emails,
     summarize_incident,
     check_email_breach,
+    check_hibp_api,
+    write_to_csv,
 )
 
 main_blueprint = Blueprint("main", __name__)
+
+# Basics
 
 
 @main_blueprint.route("/register", methods=["POST"])
@@ -67,6 +72,9 @@ def manage_aliases():
     )
 
 
+# Leak Check
+
+
 @main_blueprint.route("/leak-check", methods=["POST"])
 def check_leak():
     try:
@@ -122,6 +130,54 @@ def check_leak():
         return jsonify({"status": "ERROR", "message": str(e)}), 500
 
 
+@main_blueprint.route("/check-password", methods=["POST"])
+def check_password_pwned():
+    """
+    API endpoint to check if a password has been pwned using HIBP.
+    Expects JSON: {"password": "your_password_here"}
+    """
+    try:
+        data = request.json
+
+        # 1. Validate input
+        if not data or "password" not in data:
+            return jsonify({"error": "Password is required"}), 400
+
+        password = data["password"]
+        if not password:
+            return jsonify({"error": "Password cannot be empty"}), 400
+
+        # 2. Check password against HIBP API
+        # This function returns (is_pwned, count)
+        is_pwned, count = check_hibp_api(password)
+
+        # 3. If password is found (pwned)
+        if is_pwned:
+            return jsonify(
+                {
+                    "status": "PWNED",
+                    "message": "This password has been exposed in data breaches.",
+                    "count": count,
+                }
+            ), 200
+
+        # 4. Password is safe
+        return jsonify(
+            {
+                "status": "SAFE",
+                "message": "This password was not found in the HIBP database.",
+                "count": 0,
+            }
+        ), 200
+
+    except Exception as e:
+        print(f"Error in check_password_pwned: {e}")
+        return jsonify({"status": "ERROR", "message": str(e)}), 500
+
+
+# Mointering
+
+
 @main_blueprint.route("/sessions/start", methods=["POST"])
 def start_session():
     data = request.json
@@ -166,6 +222,23 @@ def monitor_tabs():
             "recommendation": "ALLOW" if classification == "GOOD" else "BLOCK",
         }
     )
+
+
+@main_blueprint.route("/log-choice", methods=["POST"])
+async def log_user_choice(log_entry: ChoiceLog):
+    """
+    This is the main endpoint. Your 'Agentic Mode' prompt
+    will send a POST request here when the user clicks a button.
+    """
+    try:
+        write_to_csv(log_entry)
+        return {"status": "success", "logged_entry": log_entry}
+    except Exception as e:
+        # In production, log this error
+        return {"status": "error", "message": str(e)}
+
+
+# AI Features
 
 
 @main_blueprint.route("/email-sort", methods=["POST"])
