@@ -1,9 +1,9 @@
-import secrets  # Add this import
+import secrets
 import string
 from openai import OpenAI
 import re
 from models import ChoiceLog
-from config import Config, config  # Make sure config has MODEL_NAME defined
+from config import Config, config
 import json
 from playwright.sync_api import sync_playwright
 from urllib.parse import quote
@@ -14,27 +14,25 @@ import requests
 import csv
 import os
 
+# Provide a default user agent for requests usage
+DEFAULT_UA = "SentinelID/1.0 (+https://example.com) Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
 # Initialize OpenAI client with OpenRouter
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=config.OPENROUTER_API_KEY,
-    default_headers={
-        "X-Title": "SentinelID - Identity Manager",
-    },
 )
 
 
 def generate_random_password(length=16):
-    """Generate secure random password"""
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
     return "".join(secrets.choice(chars) for _ in range(length))
 
 
 def classify_behavior(prompt):
-    """Classify tab behavior using LLM"""
     try:
         response = client.chat.completions.create(
-            model=config.MODEL_NAME,  # Ensure this is defined in config.py
+            model=config.MODEL_NAME,
             messages=[
                 {
                     "role": "system",
@@ -44,14 +42,19 @@ def classify_behavior(prompt):
             ],
             max_tokens=10,
         )
-        return response.choices[0].message.content.strip()
+        # Normalise the returned text
+        text = response.choices[0].message.content.strip().upper() if response.choices[0].message.content else ""
+        if text.startswith("GOOD"):
+            return "GOOD"
+        if text.startswith("BAD"):
+            return "BAD"
+        return text
     except Exception as e:
         print(f"AI Classification Error: {str(e)}")
         return "UNKNOWN"
 
 
 def sort_emails(email_content):
-    """Categorize emails using AI (manual JSON mode for all models)"""
     try:
         response = client.chat.completions.create(
             model=config.MODEL_NAME,
@@ -72,23 +75,20 @@ def sort_emails(email_content):
             temperature=0.3,
         )
 
-        print(json.dumps(response.model_dump(), indent=2))  # full API response
-
-        content = response.choices[0].message.content.strip()
+        # debug print of raw model dump is OK in dev
+        try:
+            print(json.dumps(response.model_dump(), indent=2))
+        except Exception:
+            pass
+        content = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
         if not content:
             raise ValueError("Empty model content received")
 
-        # Try parsing JSON output
         try:
             result = json.loads(content)
         except json.JSONDecodeError:
-            # If model includes text before/after JSON, extract it
-            import re
-
             match = re.search(r"\{.*\}", content, re.DOTALL)
-            result = (
-                json.loads(match.group(0)) if match else {"category": "UNCATEGORIZED"}
-            )
+            result = json.loads(match.group(0)) if match else {"category": "UNCATEGORIZED"}
 
         return result
 
@@ -98,33 +98,23 @@ def sort_emails(email_content):
 
 
 def summarize_incident(details):
-    """Generate plain-language incident summaries"""
     try:
         response = client.chat.completions.create(
             model=config.MODEL_NAME,
             messages=[
-                {
-                    "role": "system",
-                    "content": "Summarize security incidents in simple English for non-experts.",
-                },
+                {"role": "system", "content": "Summarize security incidents in simple English for non-experts."},
                 {"role": "user", "content": details},
             ],
             max_tokens=150,
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        return content.strip() if content else ""
     except Exception as e:
         print(f"Incident Summary Error: {str(e)}")
         return "Summary unavailable"
 
 
 def check_email_breach(email):
-    """
-    Check if an email has been in breaches using HIBP's public search with Playwright.
-    No API key required.
-    Returns:
-        dict: {'found': bool, 'breach_count': int, 'paste_count': int, 'breaches': list, 'pastes': list}
-        None: If error occurred
-    """
     try:
         with sync_playwright() as p:
             encoded_email = quote(email)
@@ -132,34 +122,23 @@ def check_email_breach(email):
 
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
+            page.set_extra_http_headers({"User-Agent": DEFAULT_UA})
 
-            # Set user agent
-            page.set_extra_http_headers(
-                {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
-            )
+            response = page.goto(url, wait_until="networkidle", timeout=15000)
+            if response is None:
+                browser.close()
+                return None
 
-            # Navigate to the page
-            response = page.goto(url, wait_until="networkidle", timeout=10000)
-
-            if response.status == 200:
-                # Extract the page content
+            status = response.status
+            if status == 200:
                 content = page.content()
-
-                # Extract JSON from the <pre> tag
                 json_match = re.search(r"<pre>(.*?)</pre>", content, re.DOTALL)
-
                 if json_match:
                     json_str = json_match.group(1)
                     data = json.loads(json_str)
-
-                    # Extract breaches and pastes
                     breaches = data.get("Breaches", [])
                     pastes = data.get("Pastes", [])
-
                     browser.close()
-
                     return {
                         "found": len(breaches) > 0,
                         "breach_count": len(breaches),
@@ -168,100 +147,59 @@ def check_email_breach(email):
                         "pastes": pastes if pastes else [],
                     }
                 else:
-                    print("Could not extract JSON from page")
+                    # HIBP has changed layout or blocked scraping
                     browser.close()
+                    print("Could not extract JSON from HIBP page (layout may have changed)")
                     return None
-
-            elif response.status == 404:
+            elif status == 404:
                 browser.close()
-                # No breaches found
-                return {
-                    "found": False,
-                    "breach_count": 0,
-                    "paste_count": 0,
-                    "breaches": [],
-                    "pastes": [],
-                }
+                return {"found": False, "breach_count": 0, "paste_count": 0, "breaches": [], "pastes": []}
             else:
-                print(f"HIBP returned status code: {response.status}")
                 browser.close()
+                print(f"HIBP returned status code: {status}")
                 return None
-
     except Exception as e:
         print(f"Error checking breach: {e}")
         return None
 
 
 def check_hibp_api(password: str, timeout: float = 10.0) -> Tuple[bool, int]:
-    """
-    Checks a password against the HIBP Pwned Passwords API (v2)
-    using k-anonymity.
-
-    This method is secure as the full password is never sent.
-
-    Returns (is_pwned, count)
-    - is_pwned: True if the password hash suffix was found in the API response
-    - count: times seen (0 if not found)
-    """
     if not password:
         raise ValueError("password required")
 
-    # 1. Calculate the SHA-1 hash of the password
     sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
-
-    # 2. Split the hash for k-anonymity
-    # The API only needs the first 5 characters (prefix).
     prefix = sha1[:5]
     suffix = sha1[5:]
-
-    # 3. Query the API range endpoint
     url = f"https://api.pwnedpasswords.com/range/{prefix}"
 
     try:
         resp = requests.get(url, headers={"User-Agent": DEFAULT_UA}, timeout=timeout)
     except requests.RequestException as e:
-        # If the network fails, we can't confirm, so we treat it as "not pwned"
-        # but print an error.
         print(f"Network error checking HIBP: {e}", file=sys.stderr)
         return False, 0
 
-    # 4. Process the response
-    # 404 means the 5-char prefix was not found in any breached passwords.
-    # This is the "best" possible outcome, as it means it's not even
-    # in the database with other similar hashes.
-    if resp.status_code == 404:
+    if resp.status_code == 404 or resp.status_code == 204:
         return False, 0
 
     if resp.status_code != 200:
-        # Any other error means we can't be sure.
         print(f"Error from HIBP API: status {resp.status_code}", file=sys.stderr)
         return False, 0
 
-    # 5. Check the list of suffixes returned by the API.
-    # The response is plain text, e.g.:
-    # 0018A45C4D1DEF81644B54AB7F969B88D65:3
-    # 00D4F6E8FA6EECAD2A384D41A49598894DA:1
-
-    # We iterate through the lines to find our *suffix*.
     for line in resp.text.splitlines():
         try:
             line_suffix, count_str = line.split(":")
             if line_suffix == suffix:
-                # We found a match!
                 return True, int(count_str)
         except ValueError:
-            # Ignore any malformed lines
             continue
 
-    # If we finish the loop without finding our suffix, the password is safe.
     return False, 0
 
 
-# --- Utility Function ---
-def write_to_csv(log_entry: ChoiceLog):
+def write_to_csv(log_entry: Any):
     """
-    Appends a new log entry to the CSV file.
-    Creates the file and writes headers if it doesn't exist.
+    Accept either a ChoiceLog instance or a dict-like object with keys:
+    user_id, session_id, choice, features.
     """
     file_exists = os.path.isfile(config.LOG_FILE)
 
@@ -269,13 +207,92 @@ def write_to_csv(log_entry: ChoiceLog):
         writer = csv.DictWriter(f, fieldnames=Config.CSV_FIELDS)
 
         if not file_exists:
-            writer.writeheader()  # Write headers if new file
+            writer.writeheader()
 
-        # Convert the log_entry to a dictionary compatible with CSV_FIELDS
-        row_data = {
-            "user_id": log_entry.user_id,
-            "session_id": log_entry.session_id,
-            "choice": log_entry.choice.value,
-            "features": str(log_entry.features),  # Store dict as a string
-        }
+        if isinstance(log_entry, ChoiceLog):
+            row_data = {
+                "user_id": log_entry.user_id,
+                "session_id": log_entry.session_id,
+                "choice": getattr(log_entry.choice, "value", str(log_entry.choice)),
+                "features": str(log_entry.features),
+            }
+        elif isinstance(log_entry, dict):
+            row_data = {
+                "user_id": log_entry.get("user_id"),
+                "session_id": log_entry.get("session_id"),
+                "choice": log_entry.get("choice"),
+                "features": str(log_entry.get("features", "")),
+            }
+        else:
+            # Fallback: attempt to coerce attributes
+            row_data = {
+                "user_id": getattr(log_entry, "user_id", None),
+                "session_id": getattr(log_entry, "session_id", None),
+                "choice": getattr(log_entry, "choice", None),
+                "features": str(getattr(log_entry, "features", "")),
+            }
+
         writer.writerow(row_data)
+
+
+def correlate_leak_to_session(leak_info, session_data, alias_data=None):
+    """
+    Correlate a detected leak to a specific user session
+    Returns correlation confidence score and factors
+    """
+    correlation_factors = {
+        "time_proximity": 0.0,
+        "site_match": 0.0,
+        "user_match": 0.0,
+        "alias_match": 0.0,
+        "behavioral_indicators": []
+    }
+    
+    confidence = 0.0
+    
+    # Time proximity analysis
+    if leak_info.get('detected_at') and session_data.get('start_time'):
+        # Simple time-based correlation (in a real implementation, this would be more sophisticated)
+        time_diff = abs((leak_info['detected_at'] - session_data['start_time']).total_seconds())
+        if time_diff < 3600:  # Within 1 hour
+            correlation_factors['time_proximity'] = 0.8
+            correlation_factors['behavioral_indicators'].append("Leak detected within 1 hour of session")
+        elif time_diff < 86400:  # Within 24 hours
+            correlation_factors['time_proximity'] = 0.4
+            correlation_factors['behavioral_indicators'].append("Leak detected within 24 hours of session")
+        else:
+            correlation_factors['time_proximity'] = 0.1
+    
+    # Site match analysis
+    if leak_info.get('breach_source') and session_data.get('tabs'):
+        breach_domain = leak_info['breach_source'].split('//')[-1].split('/')[0].lower()
+        session_domains = [tab['url'].split('//')[-1].split('/')[0].lower() 
+                          for tab in session_data.get('tabs', [])]
+        
+        if breach_domain in session_domains:
+            correlation_factors['site_match'] = 0.9
+            correlation_factors['behavioral_indicators'].append(f"User visited breach site: {breach_domain}")
+        else:
+            # Check for similar domains
+            for session_domain in session_domains:
+                if breach_domain in session_domain or session_domain in breach_domain:
+                    correlation_factors['site_match'] = 0.6
+                    correlation_factors['behavioral_indicators'].append(f"Similar domain found: {session_domain}")
+                    break
+    
+    # User match analysis
+    if leak_info.get('alias_id') and alias_data:
+        correlation_factors['user_match'] = 1.0
+        correlation_factors['behavioral_indicators'].append("Leak linked to user's alias")
+    
+    # Calculate overall confidence
+    confidence = (
+        correlation_factors['time_proximity'] * 0.3 +
+        correlation_factors['site_match'] * 0.4 +
+        correlation_factors['user_match'] * 0.3
+    )
+    
+    return {
+        "confidence": min(confidence, 1.0),
+        "factors": correlation_factors
+    }
