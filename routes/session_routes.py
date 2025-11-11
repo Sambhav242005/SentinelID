@@ -8,12 +8,13 @@ import uuid
 import base64
 import logging
 from datetime import datetime
+from typing import Dict, Any
 
 from flask import Blueprint, request, jsonify, render_template
 
 # optional DB models (safe import)
 try:
-    from models import db, Session as DBSession, SessionTab
+    from models import db, Session as DBSession
     _HAS_DB = True
 except Exception:
     _HAS_DB = False
@@ -23,15 +24,27 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, R
 from av import VideoFrame
 from PIL import Image, ImageDraw
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 session_bp = Blueprint("session", __name__)
 
+# Configuration constants
+SESSION_TIMEOUT = 3600  # 1 hour
+IDLE_TIMEOUT = 1800     # 30 minutes
+CLEANUP_INTERVAL = 60   # 1 minute
+FPS = 15
+VIEWPORT_WIDTH = 1280
+VIEWPORT_HEIGHT = 720
+
 # In-memory stores (thread-safe)
-SESSIONS = {}        # session_id (uuid str) -> {playwright,browser,context,page,url,created_at,last_activity}
-PEER_CONNECTIONS = {}  # pc_id -> {'pc': pc, 'session_id': session_id, 'created_at': ...}
-SAVED_SESSIONS = {}  # saved_id -> saved_session_dict
+SESSIONS: Dict[str, Dict[str, Any]] = {}        # session_id -> {playwright,browser,context,page,url,created_at,last_activity}
+PEER_CONNECTIONS: Dict[str, Dict[str, Any]] = {}  # pc_id -> {'pc': pc, 'session_id': session_id, 'created_at': ...}
+SAVED_SESSIONS: Dict[str, Dict[str, Any]] = {}  # saved_id -> saved_session_dict
 _lock = threading.Lock()
 
 # Persistent async loop in its own thread
@@ -55,11 +68,11 @@ def run_async(coro, timeout=30):
 
 # ----- Video track -----
 class BrowserVideoTrack(VideoStreamTrack):
-    def __init__(self, page, fps=10):
+    def __init__(self, page, fps=None):
         super().__init__()
         self.page = page
-        self.fps = fps
-        self.frame_interval = 1.0 / fps
+        self.fps = fps or FPS
+        self.frame_interval = 1.0 / self.fps
         self._last = 0.0
 
     async def recv(self):
@@ -79,7 +92,7 @@ class BrowserVideoTrack(VideoStreamTrack):
             return frame
         except Exception as e:
             logger.exception("Error generating frame")
-            img = Image.new('RGB', (1280, 720), (255, 0, 0))
+            img = Image.new('RGB', (VIEWPORT_WIDTH, VIEWPORT_HEIGHT), (255, 0, 0))
             draw = ImageDraw.Draw(img)
             draw.text((10, 10), f"Error: {str(e)}", fill=(255, 255, 255))
             frame = VideoFrame.from_image(img)
@@ -113,11 +126,11 @@ async def create_browser_session_async(session_id, url="https://example.com"):
     )
 
     page = await context.new_page()
-    await page.set_viewport_size({"width": 1280, "height": 720})
+    await page.set_viewport_size({"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT})
     await page.set_extra_http_headers({'Accept-Language': 'en-US,en;q=0.9'})
     await page.goto(url, wait_until='domcontentloaded', timeout=30000)
     await asyncio.sleep(0.5)
-    await page.set_viewport_size({"width": 1280, "height": 720})
+    await page.set_viewport_size({"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT})
     logger.info(f"Browser session {session_id} created")
     return {
         'playwright': p,
@@ -153,7 +166,7 @@ async def setup_webrtc_connection(pc, session_id, offer_sdp, offer_type):
     offer = RTCSessionDescription(sdp=offer_sdp, type=offer_type)
     await pc.setRemoteDescription(offer)
 
-    video_track = BrowserVideoTrack(page, fps=15)
+    video_track = BrowserVideoTrack(page, fps=FPS)
     pc.addTrack(video_track)
 
     @pc.on("datachannel")
@@ -293,11 +306,12 @@ async def handle_interaction(message, session_id, channel):
         try:
             if channel and getattr(channel, "readyState", None) == "open":
                 channel.send(json.dumps({'type':'error','message':'internal error'}))
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Error sending error message: {e}")
 
 # ----- Cleanup task -----
 async def cleanup_old_sessions():
+    """Background task to clean up old sessions and peer connections."""
     while True:
         try:
             now = time.time()
@@ -306,7 +320,7 @@ async def cleanup_old_sessions():
                 for sid, sess in list(SESSIONS.items()):
                     age = now - sess['created_at']
                     idle = now - sess.get('last_activity', sess['created_at'])
-                    if age > 3600 or idle > 1800:
+                    if age > SESSION_TIMEOUT or idle > IDLE_TIMEOUT:
                         to_cleanup.append(sid)
             for sid in to_cleanup:
                 logger.info(f"Auto-cleanup {sid}")
@@ -318,7 +332,7 @@ async def cleanup_old_sessions():
                     del PEER_CONNECTIONS[pcid]
         except Exception:
             logger.exception("Error in cleanup loop")
-        await asyncio.sleep(60)
+        await asyncio.sleep(CLEANUP_INTERVAL)
 
 # start cleanup
 try:
@@ -330,7 +344,17 @@ except Exception:
 
 @session_bp.route("/sessions", methods=["POST"])
 def create_session():
-    """Create a new browser session (returns a UUID session_id), accepts JSON {'url': ...}"""
+    """Create a new browser session.
+    
+    Accepts JSON payload with optional 'url' field.
+    Returns a UUID session_id for the created session.
+    
+    Request body: {"url": "https://example.com"} (optional)
+    Response: {"session_id": "uuid", "url": "url", "status": "created"}
+    
+    Returns:
+        tuple: (response_dict, status_code)
+    """
     data = request.get_json() or {}
     url = data.get('url', 'https://example.com')
     session_id = str(uuid.uuid4())
@@ -343,9 +367,11 @@ def create_session():
         # Optionally create DB record if models available (non-fatal)
         if _HAS_DB:
             try:
-                db_s = DBSession(user_id=getattr(data, "user_id", None), start_time=datetime.utcnow())
-                db.session.add(db_s)
-                db.session.commit()
+                user_id = getattr(data, "user_id", None)
+                if user_id is not None:
+                    db_s = DBSession(user_id=int(user_id), start_time=datetime.utcnow())
+                    db.session.add(db_s)
+                    db.session.commit()
             except Exception:
                 logger.exception("Optional DB session creation failed; continuing.")
 
@@ -356,6 +382,15 @@ def create_session():
 
 @session_bp.route("/sessions/<session_id>", methods=["DELETE"])
 def delete_session(session_id):
+    """Delete a browser session by session_id.
+    
+    Args:
+        session_id: UUID of the session to delete
+        
+    Returns:
+        tuple: ({"status": "deleted"}, 200) on success
+               ({"error": "failed to delete session"}, 500) on failure
+    """
     try:
         run_async(cleanup_session_async(session_id))
         return jsonify({'status': 'deleted'}), 200
@@ -365,6 +400,21 @@ def delete_session(session_id):
 
 @session_bp.route("/sessions", methods=["GET"])
 def list_sessions():
+    """List all active browser sessions.
+    
+    Returns:
+        tuple: ({"sessions": [list_of_sessions]}, 200)
+        
+    Each session contains:
+        - session_id: UUID of the session
+        - url: URL the session is currently on
+        - title: Page title
+        - created_at: ISO timestamp of creation
+        - last_activity: ISO timestamp of last activity
+        - screenshot: Base64 encoded screenshot (optional)
+        - is_isolated: Always True for this implementation
+        - status: Always 'active'
+    """
     out = []
     with _lock:
         for sid, sess in SESSIONS.items():
