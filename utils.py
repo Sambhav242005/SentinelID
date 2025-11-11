@@ -8,7 +8,7 @@ import json
 from playwright.sync_api import sync_playwright
 from urllib.parse import quote
 import hashlib
-from typing import Tuple, Dict, Any
+from typing import Tuple,  Any
 import sys
 import requests
 import csv

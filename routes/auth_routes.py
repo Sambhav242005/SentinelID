@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User
 
 auth_bp = Blueprint("auth", __name__)
@@ -18,3 +18,15 @@ def register():
     db.session.add(user)
     db.session.commit()
     return jsonify({"message": "User registered!", "user_id": user.id}), 201
+
+@auth_bp.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+    if not data or not all(k in data for k in ("email", "password")):
+        return jsonify({"error": "Email and password are required"}), 400
+
+    user = User.query.filter_by(email=data["email"]).first()
+    if not user or not check_password_hash(user.password_hash, data["password"]):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    return jsonify({"message": "Login successful!", "user_id": user.id}), 200

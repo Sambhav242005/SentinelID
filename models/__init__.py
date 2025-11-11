@@ -152,16 +152,20 @@ class Session(db.Model):
 
 
 class SessionTab(db.Model):
-    """
-    Represents an open browser tab inside a monitored session.
-    """
     __tablename__ = "session_tab"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("session.id"), nullable=False)
-    url: Mapped[str] = mapped_column(String(200), nullable=False)
-    cookies: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    local_storage: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    url: Mapped[str] = mapped_column(String(512), nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+
+    # ✅ FIXED: allow a list of cookies
+    cookies: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    local_storage: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_accessed: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     session: Mapped["Session"] = relationship(back_populates="tabs")
 
@@ -170,17 +174,16 @@ class SessionTab(db.Model):
         *,
         session_id: int,
         url: str,
-        cookies: Optional[str] = None,
-        local_storage: Optional[str] = None,
+        title: Optional[str] = None,
+        cookies: Optional[List[Dict[str, Any]]] = None,
+        local_storage: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.session_id = session_id
         self.url = url
+        self.title = title
         self.cookies = cookies
         self.local_storage = local_storage
-
-    def __repr__(self) -> str:
-        return f"<SessionTab id={self.id} session_id={self.session_id} url={self.url!r}>"
-
+        
 class IncidentCorrelation(db.Model):
     """
     Represents correlation data between a leak and a user session.

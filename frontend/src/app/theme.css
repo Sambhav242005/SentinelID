@@ -1,0 +1,85 @@
+/* Centralized theme tokens (HSL component values).
+   Update colors here to change the site's palette globally. These variables
+   are consumed by Tailwind config which maps colors like `background` -> hsl(var(--background)).
+*/
+
+:root {
+  --radius: 0.5rem;
+  /* HSL component values (used as var(--name) inside hsl()) */
+  --background: 0 0% 100%; /* white */
+  --foreground: 210 15% 8%; /* near-black for text */
+
+  /* UI tokens */
+  --card: 0 0% 100%;
+  --card-foreground: 210 15% 8%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 210 15% 8%;
+  --primary: 24 85% 48%; /* orange */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 15% 94%;
+  --secondary-foreground: 220 12% 12%;
+  --muted: 210 12% 96%;
+  --muted-foreground: 215 12% 45%;
+  --accent: 200 80% 90%;
+  --accent-foreground: 210 12% 12%;
+  --destructive: 0 75% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 16% 93%;
+  --input: 0 0% 100%;
+  --ring: 204 100% 50%;
+  --chart-1: 12 95% 60%;
+  --chart-2: 200 80% 50%;
+  --chart-3: 260 70% 60%;
+  --chart-4: 140 60% 45%;
+  --chart-5: 40 80% 55%;
+}
+
+.dark {
+  /* Dark theme tokens */
+  --background: 210 25% 8%;
+  --foreground: 210 15% 96%;
+
+  --card: 210 25% 12%;
+  --card-foreground: 210 15% 96%;
+  --popover: 210 25% 12%;
+  --popover-foreground: 210 15% 96%;
+  --primary: 24 90% 55%;
+  --primary-foreground: 210 10% 96%;
+  --secondary: 215 20% 18%;
+  --secondary-foreground: 215 20% 88%;
+  --muted: 218 18% 12%;
+  --muted-foreground: 218 18% 66%;
+  --accent: 260 60% 30%;
+  --accent-foreground: 260 60% 98%;
+  --destructive: 0 70% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 212 12% 18%;
+  --input: 210 18% 12%;
+  --ring: 204 100% 60%;
+  --chart-1: 12 95% 60%;
+  --chart-2: 200 80% 50%;
+  --chart-3: 260 70% 60%;
+  --chart-4: 140 60% 45%;
+  --chart-5: 40 80% 55%;
+}
+
+/* Mark / highlight (used by blog and markdown) */
+:root {
+  --mark-bg: 48 100% 80%; /* light yellow */
+  --mark-foreground: 210 12% 12%; /* dark text on highlight */
+}
+
+.dark {
+  --mark-bg: 48 100% 28%; /* darker yellow/pale in dark mode */
+  --mark-foreground: 0 0% 100%;
+}
+
+/* Ensure prose and mark.highlight use the theme variables */
+.prose mark,
+.prose .highlight,
+mark.highlight {
+  background: hsl(var(--mark-bg));
+  color: hsl(var(--mark-foreground));
+  padding: 0 0.125rem; /* matches px-[2px] */
+  border-radius: 0.125rem; /* matches rounded-sm */
+}

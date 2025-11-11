@@ -3,4 +3,4 @@ __pycache__
 .env
 instance
 venv
-frontend/
+sessions_data/

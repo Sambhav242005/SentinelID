@@ -1,6 +1,5 @@
-Flask
-openai
-Flask-SQLAlchemy
-python-dotenv
-requests
-playwright
+Flask==2.2.2
+Flask-SQLAlchemy==2.5.1
+Flask-Cors==3.0.10
+playwright==1.39.0
+requests==2.31.0
