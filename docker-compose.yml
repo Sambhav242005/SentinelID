@@ -1,28 +1,16 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8186:5000"             # host debugging port (optional)
+      - "8186:5000"
     environment:
       - DATABASE_URL=sqlite:///sentinelid.db
       - SECRET_KEY=your-secret-key-here
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - DEBUG=True
-      - MODEL_NAME=google/gemma-3n-e2b-it:free
-    volumes:
-      - ./data:/app/data
-      - ./temp_sessions:/app/temp_sessions
-      - ./instance:/app/instance
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health" ]
-      interval: 5s
-      timeout: 15s
-      retries: 5
+      - MODEL_NAME=google/gemma-3n-e2b
 
   frontend:
     build:
