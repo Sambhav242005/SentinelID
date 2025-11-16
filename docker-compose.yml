@@ -17,9 +17,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE: "http://backend:5000"   # baked into the build
+        NEXT_PUBLIC_API_BASE: "/api"   # baked into the build
     environment:
-      - NEXT_PUBLIC_API_BASE=http://backend:5000     # runtime fallback
+      - NEXT_PUBLIC_API_BASE=/api     # runtime fallback
     ports:
       - "3459:3000"            # optional: expose to host for debugging
     depends_on:

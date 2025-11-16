@@ -118,7 +118,7 @@ export default function TabManager() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/health`, { headers, timeout: 5000 });
+        const res = await axios.get(`${API_BASE}/health`, { headers, timeout: 5000 });
         console.log(res.data)
         const isHealthy = res.data.status === 'healthy';
         setIsBackendConnected(isHealthy);
@@ -172,7 +172,7 @@ export default function TabManager() {
     try {
       setIsLoading(true);
       addDebugLog('log', 'Fetching sessions...');
-      const res = await axios.get(`${API_BASE}/api/sessions`, { headers });
+      const res = await axios.get(`${API_BASE}/sessions`, { headers });
       const payload = res.data;
 
       // Handle both direct array and wrapped object
@@ -199,7 +199,7 @@ export default function TabManager() {
     try {
       addDebugLog('log', 'Fetching saved sessions...');
       const res = await axios.get<{ saved_tabs: SavedSession[] }>(
-        `${API_BASE}/api/sessions/saved`,
+        `${API_BASE}/sessions/saved`,
         { 
           headers,
           timeout: 5000
@@ -334,7 +334,7 @@ export default function TabManager() {
       pc.onicecandidate = (ev) => {
         if (ev.candidate && (pc as any)._pcId) {
           axios.post(
-            `${API_BASE}/api/webrtc/candidate`, 
+            `${API_BASE}/webrtc/candidate`, 
             { 
               pc_id: (pc as any)._pcId,
               candidate: ev.candidate.toJSON() 
@@ -393,7 +393,7 @@ export default function TabManager() {
 
       // Exchange SDP with backend
       const res = await axios.post(
-        `${API_BASE}/api/webrtc/offer`,
+        `${API_BASE}/webrtc/offer`,
         {
           sdp: offer.sdp,
           type: offer.type,
@@ -410,7 +410,7 @@ export default function TabManager() {
       // Send pending ICE candidates
       for (const cand of pendingCandidatesRef.current) {
         await axios.post(
-          `${API_BASE}/api/webrtc/candidate`,
+          `${API_BASE}/webrtc/candidate`,
           { pc_id: res.data.pc_id, candidate: cand },
           { headers }
         ).catch(err => addDebugLog('error', `Failed to send pending candidate: ${err}`));
@@ -495,7 +495,7 @@ export default function TabManager() {
     try {
       addDebugLog('log', `Creating new session for ${urlToCreate}`);
       const res = await axios.post<{ session_id: string }>(
-        `${API_BASE}/api/sessions`,
+        `${API_BASE}/sessions`,
         { url: urlToCreate },
         { headers }
       );
@@ -532,7 +532,7 @@ export default function TabManager() {
   const saveSession = useCallback(async (sessionId: string) => {
     try {
       addDebugLog('log', `Saving session ${sessionId}`);
-      await axios.post(`${API_BASE}/api/sessions/${sessionId}/save`, {}, { headers });
+      await axios.post(`${API_BASE}/sessions/${sessionId}/save`, {}, { headers });
       toast.success("Session saved to encrypted vault");
       await fetchSavedSessions();
     } catch (err) {
@@ -544,7 +544,7 @@ export default function TabManager() {
   const closeSession = useCallback(async (sessionId: string) => {
     try {
       addDebugLog('log', `Closing session ${sessionId}`);
-      await axios.delete(`${API_BASE}/api/sessions/${sessionId}`, { headers });
+      await axios.delete(`${API_BASE}/sessions/${sessionId}`, { headers });
       toast("Session closed");
       if (selectedSession === sessionId) setSelectedSession(null);
       await fetchSessions();
@@ -558,7 +558,7 @@ export default function TabManager() {
     try {
       addDebugLog('log', `Restoring saved session ${savedId}`);
       const res = await axios.post<{ session_id: string }>(
-        `${API_BASE}/api/sessions/${savedId}/restore`, 
+        `${API_BASE}/sessions/${savedId}/restore`, 
         {}, 
         { headers }
       );
