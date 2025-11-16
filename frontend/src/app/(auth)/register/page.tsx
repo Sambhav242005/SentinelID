@@ -52,7 +52,12 @@ export default function RegisterPage() {
       toast.success('Registration successful! Please login.');
       router.push('/login');
     } catch (error: any) {
-      toast.error(error?.response?.data?.error || 'Registration failed.');
+      console.error(error);
+      if (error.response) {
+        toast.error(error.response.data?.error || 'Registration failed.');
+      } else {
+        toast.error('API is down. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
     }

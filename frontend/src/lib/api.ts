@@ -1,11 +1,10 @@
 import axios from 'axios';
 import { User, Alias, BreachReport, Leak, IncidentCorrelation,
      AIClassification, PasswordBreachResponse } from './types';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+import { API_BASE_URL } from './config';
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },

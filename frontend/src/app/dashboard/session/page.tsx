@@ -23,9 +23,7 @@ import {
   CheckCircle,
   XCircle
 } from "lucide-react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
+import { API_BASE_URL as API_BASE, API_KEY } from "../../../lib/config";
 
 // Enhanced types for session-based architecture
 interface Session {
@@ -686,12 +684,12 @@ export default function TabManager() {
             {isBackendConnected ? (
               <>
                 <Wifi className="h-4 w-4 text-emerald-500" />
-                <span className="text-xs text-emerald-400">Backend Connected</span>
+                <span className="text-xs text-emerald-400">API Connected</span>
               </>
             ) : (
               <>
                 <WifiOff className="h-4 w-4 text-red-500" />
-                <span className="text-xs text-red-400">Backend Disconnected</span>
+                <span className="text-xs text-red-400">API is down</span>
               </>
             )}
           </div>

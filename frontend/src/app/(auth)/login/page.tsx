@@ -48,10 +48,14 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (error: any) {
       console.error(error);
-      toast.error(
-        error?.response?.data?.error ||
-          'Invalid credentials. Please try again.'
-      );
+      if (error.response) {
+        toast.error(
+          error.response.data?.error ||
+            'Invalid credentials. Please try again.'
+        );
+      } else {
+        toast.error('API is down. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
     }
