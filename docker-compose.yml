@@ -21,7 +21,7 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health" ]
       interval: 5s
-      timeout: 3s
+      timeout: 15s
       retries: 5
 
   frontend:
