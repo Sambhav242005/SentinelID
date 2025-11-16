@@ -1,5 +1,9 @@
-# Use Node.js 18 image
+# Use Node.js 18+ image
 FROM node:latest
+
+# Accept the build-time API base URL
+ARG NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
 
 # Set working directory
 WORKDIR /app
@@ -8,15 +12,18 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Build the application
+# Log the env baked into the build (debug)
+RUN echo "NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}"
+
+# Build the application with correct env baked in
 RUN npm run build
 
-# Expose port
+# Expose port for Next.js
 EXPOSE 3000
 
 # Start the application
