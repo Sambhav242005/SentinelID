@@ -24,7 +24,7 @@ services:
       args:
         NEXT_PUBLIC_API_BASE: "/api"    # build-time value for Next if you build static files
     environment:
-      - NEXT_PUBLIC_API_BASE=/api      # keep runtime consistent, but remember Next bakes it at build
+      - NEXT_PUBLIC_API_BASE=http://backend:5000     # keep runtime consistent, but remember Next bakes it at build
     depends_on:
       - backend
     restart: always
