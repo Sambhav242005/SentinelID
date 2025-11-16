@@ -15,7 +15,7 @@ services:
       - ./data:/app/data
       - ./temp_sessions:/app/temp_sessions
       - ./instance:/app/instance
-    restart: unless-stopped
+    restart: always
 
   frontend:
     build:
@@ -27,7 +27,7 @@ services:
       - NEXT_PUBLIC_API_BASE=/api      # keep runtime consistent, but remember Next bakes it at build
     depends_on:
       - backend
-    restart: unless-stopped
+    restart: always
 
   nginx:
     image: nginx:alpine
@@ -39,4 +39,4 @@ services:
     depends_on:
       - backend
       - frontend
-    restart: unless-stopped
+    restart: always

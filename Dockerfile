@@ -33,4 +33,4 @@ RUN mkdir -p data temp_sessions instance
 EXPOSE 5000
 
 # Run the application
-CMD ["python", "server.py"]
+CMD ["python", "app.py"]
