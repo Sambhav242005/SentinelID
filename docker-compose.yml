@@ -18,6 +18,11 @@ services:
       - ./temp_sessions:/app/temp_sessions
       - ./instance:/app/instance
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   frontend:
     build:
