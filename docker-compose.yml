@@ -1,10 +1,12 @@
+version: '3.8'
+
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8186:5000"               # host debugging port (optional)
+      - "8186:5000"             # host debugging port (optional)
     environment:
       - DATABASE_URL=sqlite:///sentinelid.db
       - SECRET_KEY=your-secret-key-here
@@ -16,17 +18,25 @@ services:
       - ./temp_sessions:/app/temp_sessions
       - ./instance:/app/instance
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE: "/api"    # build-time value for Next if you build static files
+        NEXT_PUBLIC_API_BASE: "http://backend:5000"   # baked into the build
     environment:
-      - NEXT_PUBLIC_API_BASE=http://backend:5000     # keep runtime consistent, but remember Next bakes it at build
+      - NEXT_PUBLIC_API_BASE=http://backend:5000     # runtime fallback
+    ports:
+      - "3459:3000"            # optional: expose to host for debugging
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: always
 
   nginx:
