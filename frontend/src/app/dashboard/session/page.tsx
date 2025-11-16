@@ -240,8 +240,6 @@ export default function TabManager() {
     
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      sdpSemantics: "unified-plan",
-      encodedInsertableStreams: false
     });
 
     // Prefer H.264 for hardware acceleration
