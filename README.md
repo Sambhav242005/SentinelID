@@ -4,6 +4,12 @@
 
 This is a Flask-based web application for managing user identities. It provides a simple interface to handle user data and integrates with the OpenRouter API for additional functionalities. The application uses a SQLite database through Flask-SQLAlchemy for data persistence.
 
+## 🚀 Live Deployment
+
+You can access the live version of the project at:
+
+**[https://ds.sambhav-surana.online](https://ds.sambhav-surana.online)**
+
 ## Installation
 
 Follow these steps to set up the project locally.
